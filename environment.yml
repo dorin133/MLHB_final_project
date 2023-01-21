@@ -1,0 +1,15 @@
+name: MLHB
+channels: 
+  - defaults
+  - conda-forge 
+dependencies:
+  - python=3.10.4
+  - ipython
+  - jupyter
+  - jupyterlab
+  - numpy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - scipy
+  - tqdm
