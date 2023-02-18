@@ -1,6 +1,6 @@
 
 import abc
-
+import numpy as np
 
 class UserModel(abc.ABC):
   @abc.abstractclassmethod
