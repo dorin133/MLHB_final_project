@@ -37,24 +37,27 @@ def main():
     env = TrainContextChoiceEnvironment()
     # generate data
     X_train, X_test, y_train, y_test = env.generate_datasets(num_features=5, num_items=7)
-    _X_test = X_test[['x_0', 'x_1', 'x_2', 'x_3', 'x_4']]
 
     for learning_model_name in learning_models.keys():
 
-        models, mnl_fit_results = mnl.train_logistic_regression_models(X_train, X_test, y_train, y_test, learning_models[learning_model_name], learning_model_name)
-        num_items_to_recom = 3
+        if learning_model_name == "logistic_reg":
+            models, _ = mnl.train_mnl_models(X_train, X_test, y_train, y_test, learning_models[learning_model_name])
+        else:
+            models, _ = pairwise_ranker.train_pairwise_ranker_models(X_train, X_test, y_train, y_test,
+                                                                     learning_models[learning_model_name])
+
+        num_items_to_recom = 6
 
         for user_model_name in env.user_models.keys():
             if learning_model_name == "logistic_reg":
-                recommendations_features, recommendations_indices = mnl.recommend_items(models[user_model_name], X_test, num_items_to_recom)
+                recommendations_features, recommendations_indices = mnl.recommend_items_mnl(models[user_model_name], X_test, num_items_to_recom)
             else:
-                recommendations_features, recommendations_indices = models[user_model_name].recommend_items_ranker(X_test)
-            # print(recommendations_features)
-            # print(recommendations_indices)
+                recommendations_features, recommendations_indices = pairwise_ranker.recommend_items_ranker(models[user_model_name], X_test, num_items_to_recom)
+
             kappa_value = kappa_eval_IIA(recommendations_features = recommendations_features,
-                                recommendations_indices = recommendations_indices,
-                                num_rec_items = num_items_to_recom, user_model=env.user_models[user_model_name])
-            print(str(learning_model_name)+' & '+str(user_model_name) + ": "+ str(kappa_value))
+                                        recommendations_indices = recommendations_indices,
+                                        num_rec_items = num_items_to_recom, user_model=env.user_models[user_model_name])
+            print(str(learning_model_name)+' & '+str(user_model_name) + ": " + str(kappa_value))
             print("---------------")
 
 if __name__ == "__main__":

@@ -3,6 +3,9 @@
 import sklearn
 import numpy as np
 import pandas as pd
+from sklearn.metrics import precision_score, accuracy_score
+import itertools
+from sklearn import svm, linear_model
 
 # def transform_pairwise(X,y):
 #     # dims
@@ -28,11 +31,6 @@ import pandas as pd
 #         self.n = int(amount_of_items_per_set)
 #         return super().fit(X_new, y_new)
 #
-
-
-import itertools
-from sklearn import svm, linear_model
-
 
 def transform_pairwise(X, y):
     """Transforms data into pairs with balanced labels for ranking
@@ -110,46 +108,6 @@ class MyRanker(svm.LinearSVC):
     def decision_function(self, X):
         return np.dot(X, self.coef_.ravel())
 
-    def recommend_items_aux(self, X):
-        """
-        Predict an ordering on X. For a list of n samples, this method
-        returns a list from 0 to n-1 with the relative order of the rows of X.
-        The item is given such that items ranked on top have are
-        predicted a higher ordering (i.e. 0 means is the last item
-        and n_samples would be the item ranked on top).
-        Parameters
-        ----------
-        X : array, shape (n_samples, n_features)
-        Returns
-        -------
-        ord : array, shape (n_samples,)
-            Returns a list of integers representing the relative order of
-            the rows in X.
-        """
-        if hasattr(self, 'coef_'):
-            return np.argsort(np.dot(X, self.coef_.ravel()))
-        else:
-            raise ValueError("Must call fit() prior to predict()")
-
-    def recommend_items_ranker(self, X_test, num_items_to_recom=3):
-        slate_grouped_X_test = X_test.groupby('slate_id')
-        # print(slate_grouped_X_test)
-
-        recommendations_indices = pd.DataFrame(columns=['slate_id', 'item_index'])
-        recommendations_features = pd.DataFrame(columns=['slate_id', 'x_0', 'x_1', 'x_2', 'x_3', 'x_4'])
-        for slate_id, slate_items in slate_grouped_X_test:
-
-            order_indices = self.recommend_items_aux(slate_items[['x_0', 'x_1', 'x_2', 'x_3', 'x_4']])
-            # use iloc to select the rows in the desired order
-            recom_slate_items_features = slate_items.iloc[order_indices].head(num_items_to_recom)
-            recom_slate_indices = order_indices[:num_items_to_recom]
-            slate_recom_indices = pd.DataFrame(
-                {'slate_id': [slate_id] * num_items_to_recom, 'item_index': recom_slate_indices})
-            recommendations_indices = pd.concat([recommendations_indices, slate_recom_indices])
-            recommendations_features = pd.concat([recommendations_features, recom_slate_items_features])
-            # print(recommendations))
-        return recommendations_features, recommendations_indices
-
     def predict(self, X):
         y_pred = X @ self.coef_.T
         y_pred_reshaped = y_pred.reshape(-1, int(self.n))
@@ -167,3 +125,69 @@ class MyRanker(svm.LinearSVC):
         return np.mean(super(MyRanker, self).predict(X_trans) == y_trans)
 
 
+def recommend_items_aux(model, X):
+    """
+    Predict an ordering on X. For a list of n samples, this method
+    returns a list from 0 to n-1 with the relative order of the rows of X.
+    The item is given such that items ranked on top have are
+    predicted a higher ordering (i.e. 0 means is the last item
+    and n_samples would be the item ranked on top).
+    Parameters
+    ----------
+    X : array, shape (n_samples, n_features)
+    Returns
+    -------
+    ord : array, shape (n_samples,)
+        Returns a list of integers representing the relative order of
+        the rows in X.
+    """
+    if hasattr(model, 'coef_'):
+        return np.argsort(np.dot(X, model.coef_.ravel()))
+    else:
+        raise ValueError("Must call fit() prior to predict()")
+
+def recommend_items_ranker(model, X_test, num_items_to_recom=3):
+    slate_grouped_X_test = X_test.groupby('slate_id')
+    # print(slate_grouped_X_test)
+
+    recommendations_indices = pd.DataFrame(columns=['slate_id', 'item_index'])
+    recommendations_features = pd.DataFrame(columns=['slate_id', 'x_0', 'x_1', 'x_2', 'x_3', 'x_4'])
+    for slate_id, slate_items in slate_grouped_X_test:
+
+        order_indices = recommend_items_aux(model, slate_items[['x_0', 'x_1', 'x_2', 'x_3', 'x_4']])
+        # use iloc to select the rows in the desired order
+        recom_slate_items_features = slate_items.iloc[order_indices].head(num_items_to_recom)
+        recom_slate_indices = order_indices[:num_items_to_recom]
+        slate_recom_indices = pd.DataFrame(
+            {'slate_id': [slate_id] * num_items_to_recom, 'item_index': recom_slate_indices})
+        recommendations_indices = pd.concat([recommendations_indices, slate_recom_indices])
+        recommendations_features = pd.concat([recommendations_features, recom_slate_items_features])
+        # print(recommendations))
+    return recommendations_features, recommendations_indices
+
+def train_pairwise_ranker_models(X_train, X_test, y_train, y_test, logistic_reg_model):
+    user_types = ['Rational', 'Compromise', 'Similarity', 'Attraction']
+    results = dict((user_type, {'accuracy': 0, 'precision': 0}) for user_type in user_types)
+
+    _X_train = X_train[['x_0', 'x_1', 'x_2', 'x_3', 'x_4']]
+    _X_test = X_test[['x_0', 'x_1', 'x_2', 'x_3', 'x_4']]
+
+    _X_test = _X_test.to_numpy()
+    _X_train = _X_train.to_numpy()
+
+    models = {}
+    for user_type in user_types:
+        _y_train = y_train[user_type].to_numpy()
+        _y_test = y_test[user_type].to_numpy()
+        _y_train = y_train[[user_type, "slate_id"]].to_numpy()
+
+        clf = logistic_reg_model.fit(_X_train, _y_train)
+        models[user_type] = clf
+        y_pred = clf.predict(_X_test)
+        # print(f'y_pred = {y_pred}')
+        precision = precision_score(_y_test, y_pred, zero_division=0)
+        accuracy = accuracy_score(_y_test, y_pred)
+        results[user_type]['accuracy'] = accuracy
+        results[user_type]['precision'] = precision
+
+    return models, results
