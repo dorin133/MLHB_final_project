@@ -8,15 +8,21 @@ import pairwise_ranker
 
 def kappa_eval_IIA(recommendations_features, recommendations_indices, num_rec_items, user_model):
     count_IIA = 0
-    for curr_item_num, curr_slate_id in zip(list(recommendations_features.index), list(recommendations_features.slate_id)):
+    slate_id_arr = np.unique(recommendations_features.slate_id)
+    for curr_slate_id in slate_id_arr:
         df_filter = recommendations_features[recommendations_features['slate_id'] == curr_slate_id]
-        old_chosen_item = user_model.choice(df_filter.drop(columns = ['slate_id']).to_numpy())
-        new_chosen_item = user_model.choice(df_filter.drop(index = [curr_item_num], columns = ['slate_id']).to_numpy())
-        if old_chosen_item == new_chosen_item:
-            count_IIA += 1
-            # print("YES")
-        # else:
-        #     print("NO")
+        df_filter_arr = df_filter.drop(columns=['slate_id']).to_numpy()
+        old_chosen_item = user_model.choice(df_filter_arr)
+        for item_idx in range(num_rec_items):
+            if old_chosen_item == item_idx:
+                continue
+            df_filter_new = df_filter.drop(index = [df_filter.index[item_idx]], columns = ['slate_id']).to_numpy()
+            new_chosen_item = user_model.choice(df_filter_new)
+            if (df_filter_arr[old_chosen_item] == df_filter_new[new_chosen_item]).all():
+                count_IIA += 1
+                # print("YES")
+            # else:
+            #     print("NO")
     return count_IIA / (recommendations_indices.shape[0])
 
 
