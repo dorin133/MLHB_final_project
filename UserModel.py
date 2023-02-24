@@ -133,3 +133,6 @@ class CompromiseUserModel(UserModel):
   
   def x_user_choice_positions(self, X):
     return np.argmax(self(X), axis=0)
+
+  def choice(self, X):
+    return np.argmax(self(X), axis=0)

@@ -4,19 +4,25 @@ from sklearn.metrics import precision_score, accuracy_score
 import numpy as np 
 import pandas as pd
 
-def train_logistic_regression_models(X_train, X_test, y_train, y_test):
+def train_logistic_regression_models(X_train, X_test, y_train, y_test, learning_model, learning_model_name):
   user_types = ['Rational','Compromise', 'Similarity', 'Attraction']
   results = dict((user_type,{'accuracy': 0, 'precision': 0}) for user_type in user_types)
 
   _X_train = X_train[['x_0', 'x_1', 'x_2', 'x_3','x_4']]
   _X_test =  X_test[['x_0', 'x_1', 'x_2', 'x_3','x_4']]
 
+  if learning_model_name == "pairwise_ranker":
+    _X_test = _X_test.to_numpy()
+    _X_train = _X_train.to_numpy()
+
   models = {}
   for user_type in user_types:
-    _y_train = y_train[user_type]
-    _y_test = y_test[user_type]
-    
-    clf = LogisticRegression().fit(_X_train, _y_train)
+    _y_train = y_train[user_type].to_numpy()
+    _y_test = y_test[user_type].to_numpy()
+    if learning_model_name == "pairwise_ranker":
+      _y_train =  y_train[[user_type, "slate_id"]].to_numpy()
+
+    clf = learning_model.fit(_X_train, _y_train)
     models[user_type] = clf
     y_pred = clf.predict(_X_test)
     # print(f'y_pred = {y_pred}')
@@ -27,8 +33,8 @@ def train_logistic_regression_models(X_train, X_test, y_train, y_test):
 
   return models, results
 
-def recommend_items(model, X_test, num_items = 3): 
-  slate_grouped_X_test = X_test.groupby(['slate_id'])
+def recommend_items(model, X_test, num_items_to_recom = 3):
+  slate_grouped_X_test = X_test.groupby('slate_id')
   # print(slate_grouped_X_test)
   
   recommendations_indices  = pd.DataFrame(columns = ['slate_id','item_index'])
@@ -40,9 +46,9 @@ def recommend_items(model, X_test, num_items = 3):
     # get the indices that would sort the vector in descending order
     order_indices = np.argsort(pred_scores)[::-1]
     # use iloc to select the rows in the desired order
-    recom_slate_items_features = slate_items.iloc[order_indices].head(num_items)
-    recom_slate_indices = order_indices[:num_items]
-    slate_recom_indices = pd.DataFrame({'slate_id': [slate_id] * num_items, 'item_index':recom_slate_indices})
+    recom_slate_items_features = slate_items.iloc[order_indices].head(num_items_to_recom)
+    recom_slate_indices = order_indices[:num_items_to_recom]
+    slate_recom_indices = pd.DataFrame({'slate_id': [slate_id] * num_items_to_recom, 'item_index':recom_slate_indices})
     recommendations_indices = pd.concat([recommendations_indices, slate_recom_indices])
     recommendations_features = pd.concat([recommendations_features, recom_slate_items_features])
     # print(recommendations))
