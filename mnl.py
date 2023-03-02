@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 
 
-def train_mnl_models(X_train, X_test, y_train, y_test, mnl_model):
-  user_types = ['Rational','Compromise', 'Similarity', 'Attraction']
+def train_mnl_models(X_train, X_test, y_train, y_test, mnl_model, user_types = ['Rational','Compromise', 'Similarity', 'Attraction']):
+
   results = dict((user_type,{'accuracy': 0, 'precision': 0}) for user_type in user_types)
 
   _X_train = X_train[['x_0', 'x_1', 'x_2', 'x_3','x_4']]
