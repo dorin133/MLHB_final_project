@@ -25,6 +25,9 @@ class RationalUserModel(UserModel):
   def choice(self, X):
     return np.argmax(self(X), axis=0)
 
+  def choice_coef(self, X):
+    return self(X)
+
 
 class AttractionUserModel(UserModel):
   def __init__(self, beta_h, alpha_attr):
@@ -65,6 +68,9 @@ class AttractionUserModel(UserModel):
   
   def choice(self, X):
     return np.argmax(self(X), axis=0)
+
+  def choice_coef(self, X):
+    return self(X)
 
 
 
@@ -109,6 +115,9 @@ class SimilarityUserModel(UserModel):
   def choice(self, X):
     return np.argmax(self(X))
 
+  def choice_coef(self, X):
+    return self(X)
+
 
 class CompromiseUserModel(UserModel):
 
@@ -136,3 +145,6 @@ class CompromiseUserModel(UserModel):
 
   def choice(self, X):
     return np.argmax(self(X), axis=0)
+
+  def choice_coef(self, X):
+    return self(X)
