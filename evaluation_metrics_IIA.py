@@ -1,13 +1,39 @@
 import UserModel
 from trained_models_utils import *
+
 from ContextChoiceEnv import *
+from swissmetro import SwissMetro
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_score, accuracy_score
-import pairwise_ranker
 from sklearn.svm import LinearSVC, SVC
 from sklearn.multiclass import OneVsRestClassifier
 
-def delusion_score(recommendations_features, num_rec_items, user_model, rational_user):
+import pairwise_ranker
+
+from mnl_xlogit import MNL
+from mixed_mnl_xlogit import Mixed_MNL
+
+def recommendations_statistics(recommendations_features_all_models,  user_models = ['Compromise', 'Similarity']):
+    total_stat = {}
+    for user in user_models:
+        user_stat = pd.DataFrame(columns=['slate_id', 'score'],)
+        mnl_recom = recommendations_features_all_models['mnl'][user]
+        mixed_mnl_recom = recommendations_features_all_models['mixed_mnl'][user]
+        
+        grouped_mnl_recom, grouped_mixed_mnl_recom = mnl_recom.groupby('slate_id'), mixed_mnl_recom.groupby('slate_id')    
+        for slate_id in mnl_recom['slate_id'].unique():
+            mnl_slate_recom = grouped_mnl_recom.get_group(slate_id)
+            mixed_mnl_slate_recom = grouped_mixed_mnl_recom.get_group(slate_id)
+            
+            shared_recoms = pd.merge(mnl_slate_recom, mixed_mnl_slate_recom, how='inner')
+            score = len(shared_recoms) / len(mnl_slate_recom)
+            
+            user_stat = pd.concat([user_stat, pd.DataFrame({'slate_id': [slate_id], 'score': [score]})])
+        total_stat[user] = user_stat
+    return total_stat 
+            
+def delusion_score(recommendations_features, num_rec_items, user_model, rational_user, varnames = ['x_0', 'x_1', 'x_2', 'x_3', 'x_4' ]):
     count_IIA = 0
     dists_from_chosen_item = []
     slate_id_arr = np.unique(recommendations_features.slate_id)
@@ -16,7 +42,7 @@ def delusion_score(recommendations_features, num_rec_items, user_model, rational
     delusion_score_avg = 0
     for curr_slate_id in slate_id_arr:
         df_filter = recommendations_features[recommendations_features['slate_id'] == curr_slate_id]
-        df_filter_arr = df_filter.drop(columns=['slate_id']).to_numpy()
+        df_filter_arr = df_filter[varnames].to_numpy()
         old_chosen_item = user_model.choice(df_filter_arr)
         user_coice_coef_vanilla = rational_user.choice_coef(df_filter_arr)
         for item_idx in range(num_rec_items):
@@ -33,14 +59,13 @@ def delusion_score(recommendations_features, num_rec_items, user_model, rational
     return delusion_score_min / slate_id_arr.shape[0], delusion_score_max / slate_id_arr.shape[0], delusion_score_avg / slate_id_arr.shape[0]
 
 
-def kappa_eval_IIA(recommendations_features, num_rec_items, user_model):
+def kappa_eval_IIA_(recommendations_features, num_rec_items, user_model, varnames = ['x_0', 'x_1', 'x_2', 'x_3', 'x_4' ]):
     count_IIA = 0
     count_rep = 0
     slate_id_arr = np.unique(recommendations_features.slate_id)
     for curr_slate_id in slate_id_arr:
         df_filter = recommendations_features[recommendations_features['slate_id'] == curr_slate_id]
-        df_filter_arr = df_filter.drop(columns=['slate_id']).to_numpy()
-        old_chosen_item = user_model.choice(df_filter_arr)
+        old_chosen_item = user_model.choice(df_filter[varnames].to_numpy())
         for item_idx in range(num_rec_items):
             if old_chosen_item == item_idx:
                 continue
@@ -53,6 +78,27 @@ def kappa_eval_IIA(recommendations_features, num_rec_items, user_model):
             # else:
             #     print("NO")
     return count_IIA / count_rep
+
+
+def kappa_eval_IIA(recommendations_features, num_rec_items, user_model, varnames = ['x_0', 'x_1', 'x_2', 'x_3', 'x_4' ]):
+    grouped_recommendations = recommendations_features.groupby('slate_id')
+    
+    IIA_counter = 0 
+    c = 0 
+    for _, slate_recom in grouped_recommendations:
+        original_slate_recom = slate_recom[varnames]
+        chosen_idx = user_model.choice(original_slate_recom.to_numpy())
+        original_chosen_idx = original_slate_recom.index[chosen_idx]
+        for idx in range(num_rec_items):
+            if idx == chosen_idx:
+                continue
+            c+=1
+            new_slate_recom = original_slate_recom.drop(index = original_slate_recom.index[idx])
+            new_chosen_idx = user_model.choice(new_slate_recom.to_numpy())
+            if (new_slate_recom.index[new_chosen_idx] == original_chosen_idx):
+                IIA_counter+=1
+    return IIA_counter/c
+
 
 def kappa_eval_IIA_2_models(recommendations_features_model1, recommendations_features_model2,
                             num_rec_items, user_model):
@@ -138,32 +184,51 @@ def main():
     #     'Rational': RationalUserModel(np.arange(num_features)),
     # }
 
-    learning_models = {'logistic_reg': LogisticRegression(), 'pairwise_ranker': pairwise_ranker.MyRanker(),
-                       'svm_linear': OneVsRestClassifier(SVC(kernel='linear', probability=True)), 'svm_rbf': OneVsRestClassifier(SVC(kernel='rbf', gamma=0.5, C=0.5, probability=True))}
-    # learning_models = {'pairwise_ranker': pairwise_ranker.MyRanker(),}
-    env = TrainContextChoiceEnvironment()
-    # generate data
-    X_train, X_test, y_train, y_test = env.generate_datasets(num_features=5, num_items=20)
+    # learning_models = {'logistic_reg': LogisticRegression(), 'pairwise_ranker': pairwise_ranker.MyRanker(),
+    #                    'svm_linear': OneVsRestClassifier(SVC(kernel='linear', probability=True)), 'svm_rbf': OneVsRestClassifier(SVC(kernel='rbf', gamma=0.5, C=0.5, probability=True))}
+    data = 'swissmetro'
+    
+    # learning_models = {'mnl': MNL(), 'mixed_mnl': Mixed_MNL() }
+    learning_models = { 'mnl': MNL() , 'mixed_mnl': Mixed_MNL()}
+    
+    if data == 'swissmetro':
+        varnames = ['slate_id', 'AV', 'alt', 'ASC_CAR', 'ASC_TRAIN', 'ASC_SM', 'R', 'CO', 'TT', 'HE']
+        varnames_ = ['ASC_CAR', 'ASC_TRAIN', 'ASC_SM', 'R', 'CO', 'TT', 'HE']
+        env = SwissMetro(varnames = varnames_)
+        X_train, X_test, y_train, y_test = env.generate_datasets()
+        # X_train, X_test, y_train, y_test =  X_train[:54], X_test[:54], y_train[:54], y_test[:54]
+    else:
+        varnames = ['x_0', 'x_1', 'x_2', 'x_3','x_4']
+        varnames_ = ['x_0', 'x_1', 'x_2', 'x_3','x_4']
+        env = TrainContextChoiceEnvironment()
+        # # generate data
+        X_train, X_test, y_train, y_test = env.generate_datasets(num_features=5, num_items=20)
+
+    num_items_to_recom = 10
 
     recommendations_features_all_models = {}
-    models = []
-    for model_name in list(learning_models.keys()):
-        models.append({'model_name': model_name, 'model_init': learning_models[model_name]})
-        recommendations_features_all_models[model_name] = recommend_items_wraper(X_train, X_test, y_train, y_test, models[-1], num_items_to_recom=5)
+    for model_name, model_init in learning_models.items():
+        recommendations_features_all_models[model_name] = recommend_items_wraper(X_train, X_test, y_train, y_test, model_init, num_items_to_recom=num_items_to_recom, varnames = varnames)
 
-    num_items_to_recom = 5
-
-    for model_name in list(learning_models.keys()):
-        for user_model_name in env.user_models.keys():
-            # if not "Similarity" == user_model_name:
-            #     continue
+    stats = recommendations_statistics(recommendations_features_all_models)
+    print(stats)
+    
+    for user_model_name in env.user_models.keys():
+        if user_model_name in  ['Rational', 'Attraction']:
+            continue
+        print("****************", user_model_name)
+        for model_name in list(learning_models.keys()):
+            
            # kappa_value_mnl, kappa_value_ranker, similar_ratio = kappa_eval_IIA_2_models(recommendations_features_model1 = recommendations_features_all_models,
            #                                          recommendations_features_model1 = recommendations_features_ranker,
            #                                          num_rec_items = num_items_to_recom, user_model=env.user_models[user_model_name])
             kappa_value_curr = kappa_eval_IIA(recommendations_features=recommendations_features_all_models[model_name][user_model_name],
-                                         num_rec_items=num_items_to_recom, user_model=env.user_models[user_model_name])
+                                         num_rec_items=num_items_to_recom, user_model=env.user_models[user_model_name], varnames = varnames_ )
+            
             delusion_score_curr_min, delusion_score_curr_max, delusion_score_curr_avg = delusion_score(recommendations_features=recommendations_features_all_models[model_name][user_model_name],
-                                         num_rec_items=num_items_to_recom, user_model=env.user_models[user_model_name], rational_user = env.user_models["Rational"])
+                                         num_rec_items=num_items_to_recom, user_model=env.user_models[user_model_name], varnames=varnames_, rational_user = env.user_models["Rational"])
+
+                                                                                                       
             print("model: " + str(model_name) + ", user_model: " + str(user_model_name) + ", kappa-value: " + str(kappa_value_curr))
             print("model: " + str(model_name) + ", user_model: " + str(user_model_name) + ", the min delusion-score: " + str(delusion_score_curr_min))
             print("model: " + str(model_name) + ", user_model: " + str(user_model_name) + ", the max delusion-score: " + str(delusion_score_curr_max))
