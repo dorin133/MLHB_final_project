@@ -9,12 +9,14 @@ from sklearn.model_selection import GroupShuffleSplit
 from UserModel import *
 
 class SwissMetro():
-    def __init__(self, num_features = 5, varnames = ['ASC_CAR', 'ASC_TRAIN', 'CO', 'TT', 'HE']):
+    def __init__(self, num_features = 5, varnames = ['ASC_CAR', 'ASC_TRAIN', 'ASC_SM', 'R', 'CO', 'TT', 'HE']):
+        num_features = len(varnames)
+        beta_h = np.concatenate(([0.5, 0.5, 0.5], np.linspace(1, 3, num_features-3)))
         self.user_models = {
-            'Rational' : RationalUserModel(np.arange(num_features)), 
-            'Compromise' : CompromiseUserModel(np.arange(num_features), 100),
-            'Similarity' : SimilarityUserModel(np.arange(num_features), 100),
-            'Attraction' : AttractionUserModel( np.arange(num_features),100),
+            'Rational' : RationalUserModel(beta_h), 
+            'Compromise' : CompromiseUserModel(beta_h, 100),
+            'Similarity' : SimilarityUserModel(beta_h, 100),
+            'Attraction' : AttractionUserModel(beta_h,100),
             }
         self.varnames = varnames 
         self._prepare_data()
@@ -59,10 +61,12 @@ class SwissMetro():
             varying=['TT', 'CO', 'HE', 'AV', 'SEATS'], alt_is_prefix=True)
         df['ASC_TRAIN'] = np.ones(len(df))*(df['alt'] == 'TRAIN')
         df['ASC_CAR'] = np.ones(len(df))*(df['alt'] == 'CAR')
-        df['TT'], df['CO'], df['HE'] = df['TT']/100, df['CO']/100, df['HE']/100  # Scale variables
-        annual_pass = (df['GA'] == 1) & (df['alt'].isin(['TRAIN', 'SM']))
-        df.loc[annual_pass, 'CO'] = 0  # Cost zero for pass holders
-
+        df['ASC_SM'] = np.ones(len(df))*(df['alt'] == 'SM')
+        df['TT'], df['CO'], df['HE'], df['WHO'] = df['TT']/100, df['CO']/100, df['HE']/100, df['WHO']/3  # Scale variables
+        # annual_pass = (df['GA'] == 1) & (df['alt'].isin(['TRAIN', 'SM']))
+        # df.loc[annual_pass, 'CO'] = 0  # Cost zero for pass holders]
+        # add a new column with random normal values
+        df['R'] = np.random.normal(0, 1, len(df))
         df = self._user_model_choices(df)
 
         return self._train_test_split(df)

@@ -1,38 +1,43 @@
 from xlogit import MixedLogit
 from mnl_general import MNL_General
-
+import pandas as pd
+import numpy as np
 class Mixed_MNL(MNL_General):
     def __init__(self):
         super(). __init__()
         self.model = MixedLogit()
     
-    def fit(self, X, y = None, varnames = ['ASC_CAR', 'ASC_TRAIN', 'CO', 'TT', 'HE'], choice_col = 'Rational'):
-        data = self._prepare_data(X, y)
-        if X == 'swissmetro':
-            train_df, _ =  data
-            self.model.fit(X=train_df[varnames], y=train_df['CHOICE'], varnames=varnames,
-            alts=train_df['alt'], ids=train_df['slate_id'], avail=train_df['AV'],
-            panels=train_df["ID"], randvars={'TT': 'n', 'HE': 'n'}, n_draws=500,
-            optim_method='L-BFGS-B')
-            self.model.summary()
-        else: # generated data 
-            choice, alts  = data
-            randvars = {}
-            for var in varnames:
-                randvars[var] = 'n'
+    def fit(self, X, y = None, varnames = ['ASC_CAR', 'ASC_TRAIN', 'ASC_SM', 'R', 'CO', 'TT', 'HE']):
+
+        self.randvars = {'R': 'n', 'CO':'n', 'TT': 'n', 'HE': 'n'}
+        self.model.fit(X=X[varnames], y=y, varnames=varnames,
+        alts=X['alt'], ids=X['slate_id'], avail=X['AV'],
+        randvars=self.randvars , n_draws=500, optim_method='L-BFGS-B')
+        self.model.summary()
+        return self
+    
+    def predict_proba(self, X, num_draws = 200, varnames = ['ASC_CAR', 'ASC_TRAIN', 'ASC_SM', 'R', 'CO', 'TT', 'HE']):
+        coeffs = pd.DataFrame(self.model.coeff_.reshape(1, -1), columns=self.model.coeff_names)
+        mean_scores = None 
+        for r in range(num_draws):
+            draws_weights = []
+            for var in varnames : 
+                mean = coeffs[var] 
+                if var in self.randvars:
+                    std = abs(coeffs['sd.' + var])
+                    var_weight = np.random.normal(loc = mean, scale=std)
+                else:
+                    var_weight = coeffs[var]
+                draws_weights.append(var_weight)
+            scores = X[varnames]@draws_weights 
+            if mean_scores is None:    
+                mean_scores = scores
+            else: 
+                mean_scores =(mean_scores + scores)/(r+1)
                 
-            self.model.fit(X=X[varnames], y=choice, 
-            varnames=varnames,
-            alts=alts, ids=X['slate_id'],
-            randvars=randvars,
-            n_draws=600,
-            optim_method='L-BFGS-B'
-            )
-            self.model.summary()
-            return self
-        
-        
-        
+        # probas = np.exp(mean_scores) / np.sum(np.exp(mean_scores))
+        # comp_probas = 1 - probas
+        return np.column_stack([mean_scores, mean_scores])        
 if __name__ == '__main__':
     # env = TrainContextChoiceEnvironment()
     # generate data
@@ -40,6 +45,5 @@ if __name__ == '__main__':
     model = Mixed_MNL()
     # fitted = model.fit(X_train, y_train['Rational'])
     fitted = model.fit('swissmetro', varnames=['ASC_CAR', 'ASC_TRAIN', 'CO', 'TT', 'HE'])
-    choices, probas = model.predict_proba(model.test_df)
-    model.kappa(choices)
-
+    probas = model.predict_proba(model.test_df)
+    print('Done')
