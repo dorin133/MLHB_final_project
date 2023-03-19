@@ -2,8 +2,9 @@ name: MLHB
 channels: 
   - defaults
   - conda-forge 
+  - imperial-college-research-computing
 dependencies:
-  - python=3.10.4
+  - python=3.9
   - ipython
   - jupyter
   - jupyterlab
@@ -13,3 +14,7 @@ dependencies:
   - scikit-learn
   - scipy
   - tqdm
+  - pylogit
+  - pip:
+    - biogeme
+    - xlogit
