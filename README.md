@@ -1,4 +1,4 @@
-# MLHB-final-project
+# MLHB final project
 ## Chosen project topic: Accuracy as a self-fulfilling prophecy:
 
 Predictive systems often display improved performance over time. In most cases, this
